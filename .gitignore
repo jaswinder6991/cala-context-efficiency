@@ -5,8 +5,7 @@ __pycache__/
 .env
 .DS_Store
 
-results/raw/*
-results/*.jsonl
-results/*.json
-results/*.csv
-!results/.gitkeep
+# Inspect AI evaluation logs/results
+logs/
+*.eval
+results/
