@@ -1,17 +1,24 @@
 [project]
 name = "cala-context-efficiency"
 version = "0.1.0"
-description = "Experiment measuring research-agent context and cost efficiency with Cala"
-readme = "README.md"
-requires-python = ">=3.11"
-dependencies = []
+description = "Cala vs web context-efficiency experiment using Inspect AI and BrowseComp"
+requires-python = ">=3.11,<3.14"
+dependencies = [
+    "inspect-ai>=0.3.248",
+    "inspect-evals>=0.16.0",
+]
 
-[project.scripts]
-cala-benchmark = "cala_benchmark.runner:main"
+[project.optional-dependencies]
+dev = [
+    "ruff>=0.12",
+]
 
 [build-system]
-requires = ["hatchling"]
-build-backend = "hatchling.build"
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
 
-[tool.hatch.build.targets.wheel]
-packages = ["src/cala_benchmark"]
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.ruff]
+line-length = 100
