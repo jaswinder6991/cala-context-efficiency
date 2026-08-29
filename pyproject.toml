@@ -6,12 +6,18 @@ requires-python = ">=3.11,<3.14"
 dependencies = [
     "inspect-ai>=0.3.258",
     "inspect-evals>=0.16.0",
+    "mcp>=1.23.0",
+    "openai>=1.0.0",
+    "python-dotenv>=1.0.0",
 ]
 
 [project.optional-dependencies]
 dev = [
     "ruff>=0.12",
 ]
+
+[project.scripts]
+cala-bench = "cala_benchmark.cli:main"
 
 [build-system]
 requires = ["setuptools>=68"]

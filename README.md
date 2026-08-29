@@ -2,25 +2,46 @@
 
 An experiment measuring whether Cala's knowledge/context layer can reduce the context and LLM cost required by a research agent.
 
-## Framework choice
+This repository is **not** a new evaluation framework. It is a thin orchestration layer over Inspect AI and Inspect Evals.
 
-This project intentionally does **not** implement its own evaluation framework or benchmark.
+## Framework choice
 
 - **Evaluation framework:** [Inspect AI](https://inspect.aisi.org.uk/)
 - **Benchmark collection:** [Inspect Evals](https://github.com/UKGovernmentBEIS/inspect_evals)
 - **Initial benchmark:** BrowseComp (1,266 samples)
 - **Canonical benchmark implementation/scorer:** `inspect_evals.browse_comp`
 
-Inspect provides agent/tool orchestration, execution, logging, token usage and evaluation infrastructure. Inspect Evals provides the BrowseComp dataset adapter and scorer. Our code should only supply the experiment-specific retrieval configuration.
+Inspect provides agent/tool orchestration, execution, logging, token usage, and evaluation infrastructure. Inspect Evals provides the BrowseComp dataset adapter and scorer. This repo only supplies the experiment-specific retrieval configuration.
 
 ## Experiment
 
-Run the same research-agent setup against the same BrowseComp tasks with two context mechanisms:
+Run the same research-agent setup against the **same** BrowseComp tasks with two context mechanisms:
 
-1. **Web baseline** — Inspect's generic web search/browser tools.
+1. **Web baseline** — Inspect's generic `web_search` / `web_browser` tools (the BrowseComp browsing setup).
 2. **Cala** — Cala's hosted MCP server, exposing Cala knowledge tools to the same Inspect ReAct agent.
 
-The model, task prompt, generation settings and execution limits should remain constant. The retrieval/context layer is the experimental variable.
+The model, task prompt, generation settings, and execution limits stay constant. The retrieval/context layer is the experimental variable.
+
+```text
+Same benchmark
+Same agent
+Same model
+Same prompt
+Same generation settings
+Same execution limits
+        │
+        ├───────────────┐
+        │               │
+   Web retrieval     Cala MCP
+        │               │
+        └───────┬───────┘
+                │
+             Same LLM
+                │
+         BrowseComp scorer
+                │
+          Inspect logs
+```
 
 ### Primary question
 
@@ -30,71 +51,44 @@ The model, task prompt, generation settings and execution limits should remain c
 
 **Cost per successful task.**
 
-Supporting metrics should come from Inspect's logs where available:
+Supporting metrics come from Inspect logs:
 
-- BrowseComp accuracy
-- input/output/total token usage
+- BrowseComp accuracy (`browse_comp_accuracy`)
+- input / cached input / output / total tokens
+- estimated model cost (`ModelUsage.total_cost`)
 - model calls / turns
-- tool calls
-- latency
-- estimated model cost
+- tool calls and tool latency (transcript `ToolEvent`s)
+- sample `total_time`
 
-We should not duplicate Inspect's token accounting or logging implementation.
+Do not duplicate Inspect's token accounting.
 
 ## Why MCP?
 
-Cala provides a hosted MCP endpoint at `https://api.cala.ai/mcp/`. Inspect supports HTTP MCP servers directly, so there is no need to write a Cala API client or custom tool adapter.
+Cala's hosted MCP endpoint is `https://api.cala.ai/mcp/`, authenticated with `X-API-KEY`. Inspect supports HTTP MCP servers directly (`mcp_server_http`), so this experiment does not include a Cala REST client.
 
-MCP is **not** intended to be the experimental variable. At the model layer, MCP exposes ordinary callable tools: the model still receives tool definitions, emits tool calls, and receives tool results. Inspect's MCP integration handles the protocol/transport underneath. Inspect can execute HTTP MCP locally, which is what this experiment uses.
+MCP is **not** the experimental variable. Inspect exposes MCP capabilities as ordinary tools: the model still receives tool definitions, emits tool calls, and receives tool results. Local MCP execution (`execution="local"`) means Inspect performs the HTTP round trip, so tool results land in Inspect logs the same way web-tool results do.
 
-There is still transport overhead to measure: Cala calls involve an HTTP/MCP round trip, while Inspect's built-in web tools have their own implementation path. That overhead should appear in latency and tool timing, but it should not be confused with LLM context-token cost. We therefore report both **LLM token/cost metrics** and **wall-clock/tool latency**.
-
-We also explicitly filter the Cala MCP surface to four research tools:
-
-- `knowledge_search`
-- `knowledge_query`
-- `entity_search`
-- `retrieve_entity`
-
-This avoids giving the model an unnecessarily large MCP tool catalog. Inspect supports tool selection for MCP servers, and tool definitions themselves consume model context, so tool-surface size is an experimental control rather than an incidental detail.
-
-### Why not use Cala's API directly?
-
-We could call `/v1/knowledge/search` and `/v1/knowledge/query` ourselves, but doing that would create custom plumbing and move the experiment away from the way agents naturally consume Cala. MCP lets us test Cala in the same external-tool interaction pattern as the web baseline while keeping our code thin.
-
-## Tool calling vs MCP
-
-A useful distinction:
-
-```text
-LLM
- │
- │ normal tool call
- ▼
-Inspect tool interface
- │
- ├── Web tool implementation
- │
- └── MCP tool source
-       │
-       ▼
-   Cala MCP server
-```
-
-MCP does not inherently require a different kind of LLM reasoning. It standardizes how tools are discovered and invoked. The protocol can add serialization/network overhead, but that is separate from the model's input/output token accounting.
-
-For this reason, we should **not** make a native Python Cala wrapper for the benchmark. The Cala arm should use MCP, and the README/results should explicitly distinguish:
+Measure both:
 
 - **LLM context efficiency:** input tokens, cached tokens, output tokens, total cost.
 - **Tool/transport efficiency:** number of calls, tool latency, end-to-end latency.
 
-If we later want to measure pure transport overhead, that should be a separate microbenchmark rather than contaminating the main context-efficiency result.
+The Cala arm is filtered to the research tools actually advertised by `https://api.cala.ai/mcp/`:
+
+- `knowledge_search`
+- `knowledge_query`
+- `entity_search`
+- `entity_retrieval`
+
+`entity_introspection` is omitted so the Cala tool catalog is not larger than it needs to be. Tool definitions themselves consume context. The server currently exposes five tools; we keep four.
+
+The Cala arm has **no web/browser fallback**. That would turn the comparison into web vs web+Cala.
 
 ## Why BrowseComp?
 
-BrowseComp is designed for difficult browsing-agent questions that generally require web access and multi-hop research. Inspect Evals ships the benchmark adapter and canonical scorer.
+BrowseComp is designed for difficult browsing-agent questions that generally require web access and multi-hop research. Inspect Evals ships the adapter and canonical scorer.
 
-The benchmark contains 1,266 samples. We can start with a small reproducible subset for development and then run the full benchmark when the experiment is stable.
+Do not copy BrowseComp questions or answers into this repository, the README, tests, or committed logs. The BrowseComp authors ask that examples not be reproduced online.
 
 ## Architecture
 
@@ -117,41 +111,93 @@ The benchmark contains 1,266 samples. We can start with a small reproducible sub
                      │
                      ▼
              Inspect scorer/logs
-                     │
-                     ▼
-              comparison report
 ```
 
-## Repository layout
+The shared solver factory is `create_solver(tools)` in `src/cala_benchmark/experiments/browse_comp.py`. Both arms wrap that factory; only the tool list changes.
 
-```text
-src/cala_benchmark/
-└── experiments/
-    └── browse_comp.py     # Thin Inspect task + retrieval configuration
+The shared research prompt requires retrieval before submit. That instruction is identical on both arms.
 
-configs/                   # Reproducible experiment settings
-scripts/run.py             # Run web or Cala arm
-results/                   # Local Inspect logs/results; gitignored
-```
+OpenAI `web_search` is a native Responses API tool (`type: web_search`), not an Inspect function call. It will not show up as a `ToolEvent`. Count `response.tool_usage.web_search.num_requests` / `web_search_call` items when comparing retrieval volume. The runner prints both function-tool calls and native web-search requests so the web arm is not mistaken for “no retrieval.”
 
-## Running
+## Install
 
-Install the project and set the model provider credentials required by Inspect.
-
-Web baseline:
+Python 3.11–3.13.
 
 ```bash
-python scripts/run.py web --samples 10 --model openai/gpt-5-mini
+python -m venv .venv
+source .venv/bin/activate
+pip install -e .
+cp .env.example .env
 ```
 
-Cala:
+Validated against `inspect-ai==0.3.260`, `inspect-evals==0.18.0`, and `mcp==2.1.1`.
+
+Fill in `.env`. Never commit the real file.
+
+The **web** arm uses Inspect's `web_browser` tool, which needs Docker and the BrowseComp compose image (`aisiuk/inspect-tool-support`). The **Cala** arm does not use a sandbox.
+
+OpenAI models such as `openai/gpt-4o-mini` can use Inspect's built-in OpenAI web search. If you run a non-OpenAI model, set `TAVILY_API_KEY` or Google CSE credentials as a `web_search` fallback.
+
+## Smoke test
+
+Use a small paired subset. Do not treat these numbers as the experiment result.
+
+Both commands must use the same `--samples` count and `--model`. Samples are the first N BrowseComp rows with `sample_shuffle=false`, so the task IDs match across arms.
+
+Web (requires Docker):
+
+```bash
+python scripts/run.py web --samples 2 --model openai/gpt-4o-mini
+```
+
+Cala (requires `CALA_API_KEY`):
 
 ```bash
 export CALA_API_KEY=...
-python scripts/run.py cala --samples 10 --model openai/gpt-5-mini
+python scripts/run.py cala --samples 2 --model openai/gpt-4o-mini
 ```
 
-The first development run should use a small sample count. Do not interpret small-sample results as the final benchmark result.
+Equivalent Inspect CLI:
+
+```bash
+inspect eval src/cala_benchmark/experiments/browse_comp.py@browse_comp_web \
+  --model openai/gpt-4o-mini -T num_samples=2 --sample-shuffle false
+
+inspect eval src/cala_benchmark/experiments/browse_comp.py@browse_comp_cala \
+  --model openai/gpt-4o-mini -T num_samples=2 --sample-shuffle false
+```
+
+Logs are written to `results/` (gitignored). Inspect logs include decrypted BrowseComp text — keep them local.
+
+View logs:
+
+```bash
+inspect view
+```
+
+Useful runner flags (applied identically if you pass them on both arms):
+
+```text
+--samples N          first N BrowseComp samples (default 2)
+--model MODEL        Inspect model id
+--log-dir DIR        Inspect log directory (default ./results)
+--message-limit N    max messages per sample (default 40)
+--temperature T      generation temperature
+--max-tokens N       max output tokens
+--sample-id ID ...   explicit paired sample ids
+```
+
+## Environment variables
+
+| Variable | Used by |
+| --- | --- |
+| `OPENAI_API_KEY` | OpenAI models and OpenAI built-in web search |
+| `INSPECT_EVAL_MODEL` | default `--model` if the flag is omitted |
+| `CALA_API_KEY` | Cala MCP `X-API-KEY` header |
+| `TAVILY_API_KEY` | optional `web_search` fallback |
+| `GOOGLE_CSE_ID` / `GOOGLE_CSE_API_KEY` | optional Google `web_search` fallback |
+
+Do not put keys in YAML.
 
 ## Experimental constraints
 
@@ -166,8 +212,35 @@ The first development run should use a small sample count. Do not interpret smal
 9. Keep MCP transport overhead separate from LLM context-cost analysis.
 10. Report enough per-sample data to make failures and cost differences inspectable.
 
-The goal is to compare **context mechanisms**, not to create another benchmark.
+## What Inspect logs contain
+
+Each run writes a native Inspect `.eval` log. Useful fields for later aggregation (not implemented here yet):
+
+| Need | Where in the log |
+| --- | --- |
+| task / sample id | `EvalSample.id` (stable `browse_comp-...` ids) |
+| variant | `eval.metadata.variant` |
+| model | `eval.model` |
+| success | BrowseComp score `value["score"]` (`C` / `I`) |
+| input tokens | `ModelUsage.input_tokens` |
+| cached input tokens | `ModelUsage.input_tokens_cache_read` |
+| output tokens | `ModelUsage.output_tokens` |
+| total tokens | `ModelUsage.total_tokens` |
+| estimated model cost | `ModelUsage.total_cost` |
+| sample latency | `EvalSample.total_time` |
+| tool calls / tool latency | transcript `ToolEvent`s; OpenAI native search via `tool_usage.web_search` |
+| model calls | assistant messages / model events |
+
+Read logs with `inspect_ai.log.read_eval_log` or `inspect view`. Do not commit them.
+
+## Results
+
+Aggregate reporting comes after a real paired run. This README will not contain placeholder numbers.
+
+The interesting outcome is not necessarily higher Cala accuracy. Comparable accuracy at lower input tokens / cost per success would support the hypothesis.
+
+Do not draw conclusions from a 2–10 sample smoke test.
 
 ## Status
 
-The repository now has both experiment arms wired through Inspect AI. The Cala arm uses Cala's hosted MCP endpoint rather than a custom API adapter. Next step is a small end-to-end run to validate the BrowseComp scorer, MCP connection, tool names, and Inspect usage logs before scaling the experiment.
+The web and Cala arms are wired through Inspect AI / Inspect Evals BrowseComp with a shared ReAct solver. Next: a 2-sample smoke test to confirm BrowseComp loads, both tool surfaces execute, the scorer runs, and Inspect usage logs are written. Then scale the paired sample set. Do not run all 1,266 tasks until that path is verified.

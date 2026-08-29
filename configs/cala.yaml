@@ -1,4 +1,16 @@
 benchmark: browse_comp
 variant: cala
-num_samples: 10
-model: openai/gpt-5-mini
+num_samples: 2
+model: openai/gpt-4o-mini
+message_limit: 40
+sample_shuffle: false
+mcp:
+  url: https://api.cala.ai/mcp/
+  header: X-API-KEY
+  execution: local
+tools:
+  - knowledge_search
+  - knowledge_query
+  - entity_search
+  - entity_retrieval
+sandbox: none
