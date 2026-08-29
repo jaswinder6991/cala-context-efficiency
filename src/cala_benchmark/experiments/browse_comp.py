@@ -1,11 +1,12 @@
 """Thin wrappers around the canonical Inspect Evals BrowseComp task.
 
-This module is intentionally small: BrowseComp owns the dataset and scorer;
-Inspect AI owns evaluation, agent orchestration, logging, and token accounting.
+BrowseComp owns the dataset and scorer; Inspect AI owns evaluation, agent
+orchestration, logging, and token accounting. This module only supplies the
+experiment-specific retrieval configuration.
 """
 
 from inspect_ai import Task
-from inspect_ai.agent import react
+from inspect_ai.agent import react, run
 from inspect_ai.solver import Solver
 from inspect_ai.tool import web_browser, web_search
 from inspect_evals.browse_comp import browse_comp
@@ -13,7 +14,7 @@ from inspect_evals.browse_comp.prompts import QUERY_TEMPLATE
 
 
 def web_solver() -> Solver:
-    """Use the same general web-research approach as the canonical BrowseComp eval."""
+    """Web baseline using Inspect's standard web search/browser tools."""
     agent = react(
         name="web_researcher",
         description="Web research assistant",
@@ -26,7 +27,7 @@ def web_solver() -> Solver:
     )
 
     async def solve(state, generate):
-        result = await agent.run(QUERY_TEMPLATE.format(Question=state.input_text))
+        result = await run(agent, QUERY_TEMPLATE.format(Question=state.input_text))
         state.output.completion = result.output.completion
         return state
 
@@ -38,5 +39,6 @@ def web_task(num_samples: int | None = None) -> Task:
     return browse_comp(num_samples=num_samples, solver=web_solver())
 
 
-# Cala will be added here once its API/MCP integration is verified. The Cala variant
-# must reuse this exact BrowseComp task/scorer and differ only in retrieval tools.
+# Cala will be added here once its API/MCP integration is verified. The Cala
+# variant must reuse this exact BrowseComp task/scorer and differ only in
+# retrieval tools.
