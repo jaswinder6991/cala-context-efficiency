@@ -1,15 +1,26 @@
 # Cala Context Efficiency Benchmark
 
-A small experiment measuring whether a knowledge/context layer can reduce the context and LLM cost required by a research agent.
+An experiment measuring whether Cala's knowledge/context layer can reduce the context and LLM cost required by a research agent.
+
+## Framework choice
+
+This project intentionally does **not** implement its own evaluation framework or benchmark.
+
+- **Evaluation framework:** [Inspect AI](https://inspect.aisi.org.uk/)
+- **Benchmark collection:** [Inspect Evals](https://github.com/UKGovernmentBEIS/inspect_evals)
+- **Initial benchmark:** BrowseComp (1,266 samples)
+- **Canonical benchmark implementation/scorer:** `inspect_evals.browse_comp`
+
+Inspect provides the agent/tool orchestration, execution, logging, token usage and evaluation infrastructure. Inspect Evals provides the BrowseComp dataset adapter and scorer. Our code should only supply the experiment-specific retrieval configuration and result comparison.
 
 ## Experiment
 
-We run the **same agent and model** on an existing research-agent benchmark with two retrieval configurations:
+Run the same research-agent setup against the same BrowseComp tasks with two context mechanisms:
 
-1. **Web baseline** — generic web search/retrieval.
-2. **Cala** — Cala knowledge retrieval.
+1. **Web baseline** — generic web search/browser tools.
+2. **Cala** — Cala knowledge retrieval tools.
 
-The project intentionally does **not** implement its own benchmark dataset or evaluator. The benchmark and canonical evaluation remain external dependencies; this repository orchestrates runs, captures traces, and reports results.
+The model, task prompt, generation settings and execution limits should remain constant. The retrieval/context layer is the experimental variable.
 
 ### Primary question
 
@@ -17,52 +28,69 @@ The project intentionally does **not** implement its own benchmark dataset or ev
 
 ### Primary metric
 
-**Cost per successful task**.
+**Cost per successful task.**
 
-Secondary metrics:
+Supporting metrics should come from Inspect's logs where available:
 
-- task accuracy / score from the canonical evaluator
-- LLM input tokens
-- total LLM tokens
-- LLM calls
-- retrieval calls
-- retrieved/context tokens where measurable
+- BrowseComp accuracy
+- input/output/total token usage
+- model calls / turns
+- tool calls
 - latency
-- estimated LLM cost
+- estimated model cost
 
-## Initial benchmark
+We should not duplicate Inspect's token accounting or logging implementation.
 
-**BrowseComp** is the intended first benchmark because it focuses on difficult, multi-hop web research and therefore exercises the context-acquisition problem we want to measure.
+## Why BrowseComp?
 
-The benchmark's canonical tasks/evaluator are not copied into this repository.
+BrowseComp is specifically designed for difficult browsing-agent questions that generally require web access and multi-hop research. Inspect Evals already ships a maintained BrowseComp implementation, including the dataset download/checksum and canonical scorer.
 
-## Design principles
+The benchmark contains 1,266 samples. We can start with a small reproducible subset for development and then run the full benchmark when the experiment is stable.
 
-- Same benchmark tasks
-- Same model
-- Same agent loop
-- Same prompts and generation settings where possible
-- Same execution limits
-- Only the retrieval/context mechanism changes
-- Use the benchmark's existing evaluator rather than inventing a judge
-- Keep raw traces separate from summarized results
-- Make every experimental assumption explicit
+## Architecture
+
+```text
+                 Inspect Evals
+                 BrowseComp
+                     │
+                     ▼
+                 Inspect AI
+               evaluation runner
+                     │
+             ┌───────┴───────┐
+             │               │
+        Web context     Cala context
+             │               │
+             └───────┬───────┘
+                     │
+                  same LLM
+                     │
+                     ▼
+             Inspect scorer/logs
+                     │
+                     ▼
+              comparison report
+```
 
 ## Repository layout
 
 ```text
 src/cala_benchmark/
-├── agents/             # Retrieval adapters / agent configuration
-├── benchmarks/         # Thin adapters around external benchmarks
-├── instrumentation/    # Token, cost, latency and trace collection
-├── runner.py           # Experiment orchestration
-└── reporting.py        # Aggregate comparison output
+├── experiments/       # Thin Inspect task wrappers / retrieval configuration
+├── tools/             # Cala-specific tool adapter(s)
+└── reporting/         # Experiment comparison only; no scoring logic
 
-configs/                # Reproducible experiment configurations
-scripts/                # CLI entry points
-results/                # Local experiment outputs; raw data is gitignored
+configs/               # Reproducible experiment settings
+scripts/               # Small CLI entry points
+results/               # Local Inspect logs/results; gitignored
 ```
+
+## Important experimental constraint
+
+We should avoid changing the BrowseComp task or its scorer. In particular, do not copy the benchmark dataset into this repository and do not introduce a custom LLM judge unless the canonical evaluation requires it.
+
+The goal is to compare **context mechanisms**, not to create another benchmark.
 
 ## Status
 
-Scaffold only. The next step is to wire the canonical BrowseComp evaluation and implement the two retrieval configurations without changing the benchmark itself.
+Scaffold updated to use Inspect AI + Inspect Evals. Next step: implement the two retrieval configurations as Inspect tools/solvers and verify that both can run through the existing BrowseComp task without changing its scorer.
