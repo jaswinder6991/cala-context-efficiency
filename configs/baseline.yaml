@@ -1,0 +1,15 @@
+benchmark: browsecomp
+variant: web
+
+model:
+  name: ""
+  temperature: 0
+
+agent:
+  max_steps: 10
+
+retrieval:
+  provider: web
+
+reporting:
+  primary_metric: cost_per_success
