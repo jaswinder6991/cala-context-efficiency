@@ -4,7 +4,7 @@ version = "0.1.0"
 description = "Cala vs web context-efficiency experiment using Inspect AI and BrowseComp"
 requires-python = ">=3.11,<3.14"
 dependencies = [
-    "inspect-ai>=0.3.248",
+    "inspect-ai>=0.3.258",
     "inspect-evals>=0.16.0",
 ]
 
